@@ -1,22 +1,46 @@
-TARGET = 2048-PSP
-OBJS = src/psp2048.o src/callbacks.o src/graphics.o src/framebuffer.o src/input.o
+TARGET:= 2048-PSP
+TITLE:= 2048000001
+
+OBJS = src/psp2048.o graphics/bg.o graphics/b0.o graphics/b1.o graphics/b2.o graphics/b3.o graphics/numtable.o \
+	graphics/0002.o graphics/0004.o graphics/0008.o graphics/0016.o \
+	graphics/0032.o graphics/0064.o graphics/0128.o graphics/0256.o \
+	graphics/0512.o graphics/1024.o graphics/2048.o graphics/bg.o graphics/numtable.o \
 
 
-INCDIR =
-CFLAGS = -O2 -G0 -Wall -g -I include
-CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
-CXXFLAGS += -Wall -Wuninitialized -O -DLINUX
+PREFIX  = arm-vita-eabi
+CC      = $(PREFIX)-gcc
+CXX      = $(PREFIX)-g++
+CFLAGS  = -Wl,-q -Wall -O3
+CXXFLAGS  = $(CFLAGS) -fno-exceptions
 ASFLAGS = $(CFLAGS)
+
 
 LIBDIR =
 LDFLAGS = 
-LIBS = -lintraFont -lpspgum -lpspgu -lpng -lz -lm -lpsprtc
+LIBS = -lvita2d -lSceKernel_stub -lSceTouch_stub -lSceDisplay_stub -lSceGxm_stub \
+	-lSceSysmodule_stub -lSceCtrl_stub -lScePgf_stub \
+	-lSceCommonDialog_stub -lfreetype -lpng -ljpeg -lz -lm -lc
 
-EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = 2048-PSP
-PSP_EBOOT_ICON = ICON0.PNG
-PSP_EBOOT_PIC1 = PIC1.PNG
+eboot.bin: $(TARGET).velf
+	vita-make-fself $< $@
 
-PSPSDK=$(shell psp-config --pspsdk-path)
-include $(PSPSDK)/lib/build.mak
+%.velf: %.elf
+	vita-elf-create $< $@
 
+$(TARGET).elf: $(OBJS)
+	$(CC) $(CFLAGS) $^ $(LIBS) -o $@
+
+%.o: %.png
+	$(PREFIX)-ld -r -b binary -o $@ $^
+
+clean:
+	@rm -rf $(TARGET).velf $(TARGET).elf $(OBJS)
+
+vpk: $(TARGET).velf
+	vita-make-fself $< eboot.bin
+	vita-mksfoex -s TITLE_ID=$(TITLE) "$(TARGET)" param.sfo
+	cp -f param.sfo sce_sys/param.sfo
+	
+	#------------ Comment this if you don't have 7zip ------------------
+	7z a -tzip $(TARGET).vpk -r sce_sys/* eboot.bin 
+	#-------------------------------------------------------------------

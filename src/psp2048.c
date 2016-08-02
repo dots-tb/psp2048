@@ -1,52 +1,60 @@
 /*
- * 2048.c : 2048-PSP Clone
- *
- * Licensed under the GPLv2 license 
- *
- * clone & port by Anderain Ryu <anderain.develop@gmail.com>
- *
- */
- 
-#include <pspkernel.h>
-#include <pspctrl.h>
+* 2048.c : 2048-PSP Clone
+*
+* Licensed under the GPLv2 license 
+*
+* clone & port by Anderain Ryu <anderain.develop@gmail.com>
+*
+* PORTED TO VITA BY DOTS_TB
+* 
+**  Special thanks to: 
+**  TEAM MOLECULE for smelling good and making everything on earth 
+**  xepri for vita2dlib
+**  
+**  wololo for helping me find the Lord 
+**  m0skit0 for advance psp tk or whatever the site was
+**
+**  SMOKE, meetpatty, DrakonPL for code to study(or copy)
+**  Rinnegatamante for makefiles to study 
+**  minilgos for his notes
+**
+*/
+
+#include <psp2/ctrl.h>
+#include <psp2/touch.h>
+#include <psp2/kernel/processmgr.h>
+
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <time.h>
-#include "graphics.h"
-#include "callbacks.h"
-#include "input.h"
+#include <vita2d.h>
+#include <math.h>
 
 #define VERS 1
 #define REVS 0
 
-PSP_MODULE_INFO("2048", PSP_MODULE_USER, VERS, REVS);
-PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER); 
-PSP_HEAP_SIZE_MAX();
-/*
- */
-#define ABS(x) ((x) < 0 ? -(x) : (x))
- 
- #define blit blitAlphaImageToScreen
- 
+#define MULTIPLIER      2
 #define TABLE_WIDTH 	4
 #define TABLE_HEIGHT 	4
 
-#define SCORE_DRAW_X_OFFSET 48
-#define SCORE_DRAW_Y_OFFSET 44
+#define SCORE_DRAW_X_OFFSET 48*MULTIPLIER
+#define SCORE_DRAW_Y_OFFSET 44*MULTIPLIER
 #define HISCORE_DRAW_X_OFFSET SCORE_DRAW_X_OFFSET
-#define HISCORE_DRAW_Y_OFFSET 144
+#define HISCORE_DRAW_Y_OFFSET 144*MULTIPLIER
 
-#define NUM_CHAR_WIDTH  16
-#define NUM_CHAR_HEIGHT 22
+#define NUM_CHAR_WIDTH  16*MULTIPLIER
+#define NUM_CHAR_HEIGHT 22*MULTIPLIER
 
-#define NUM_SQR_WIDTH	54
-#define NUM_SQR_HEIGHT	54
+#define NUM_SQR_WIDTH	54*MULTIPLIER
+#define NUM_SQR_HEIGHT	54*MULTIPLIER
 
 #define STR_BUFFER_SIZE	64
 
-#define NUM_DRAW_X_OFFSET 226
-#define NUM_DRAW_Y_OFFSET 22
-#define NUM_DRAW_SPACING 5
+#define NUM_DRAW_X_OFFSET 226*MULTIPLIER
+#define NUM_DRAW_Y_OFFSET 22*MULTIPLIER
+#define NUM_DRAW_SPACING 5*MULTIPLIER
 
 #define NUMBER_IMAGE_MAX 11
 
@@ -54,11 +62,44 @@ PSP_HEAP_SIZE_MAX();
 #define NUM_DRAW_Y_POS(y)	(NUM_DRAW_Y_OFFSET + (NUM_DRAW_SPACING + NUM_SQR_HEIGHT) * (y))
 
 #define NEW_POINT_ANI_SIZE 4
+#define BLACK   RGBA8(  0,   0,   0, 255)
+#define WHITE   RGBA8(255, 255, 255, 255)
 
-Image * imgBack;
-Image * imgNum[NUMBER_IMAGE_MAX];
-Image * imgNumTable;
-Image * imgNewPointAni[NEW_POINT_ANI_SIZE];
+#define TOUCH_DEADZONE 75
+
+#define lerp(value, from_max, to_max) ((((value*10) * (to_max*10))/(from_max*10))/10)
+
+
+extern unsigned char _binary_graphics_0002_png_start;
+extern unsigned char _binary_graphics_0004_png_start;
+extern unsigned char _binary_graphics_0008_png_start;
+extern unsigned char _binary_graphics_0016_png_start;
+extern unsigned char _binary_graphics_0032_png_start;
+extern unsigned char _binary_graphics_0064_png_start;
+extern unsigned char _binary_graphics_0128_png_start;
+extern unsigned char _binary_graphics_0256_png_start;
+extern unsigned char _binary_graphics_0512_png_start;
+extern unsigned char _binary_graphics_1024_png_start;
+extern unsigned char _binary_graphics_2048_png_start;
+extern unsigned char _binary_graphics_bg_png_start;
+extern unsigned char _binary_graphics_b0_png_start;
+extern unsigned char _binary_graphics_b1_png_start;
+extern unsigned char _binary_graphics_b2_png_start;
+extern unsigned char _binary_graphics_b3_png_start;
+extern unsigned char _binary_graphics_numtable_png_start;
+
+vita2d_texture * imgBack;
+vita2d_texture * imgNum[NUMBER_IMAGE_MAX];
+vita2d_texture * imgNumTable;
+vita2d_texture * imgNewPointAni[NEW_POINT_ANI_SIZE];
+
+SceCtrlData pad;
+SceTouchData touch;
+unsigned int touched = 0;
+unsigned int touchX = 0;
+unsigned int touchY = 0;
+int fxTouch;
+int fyTouch;
 
 int table[TABLE_HEIGHT][TABLE_WIDTH] = {
 	{0,0,0,0},
@@ -69,55 +110,61 @@ int table[TABLE_HEIGHT][TABLE_WIDTH] = {
 
 int iScore,iHighScore;
 
-const char * NUMBER_IMAGE_TABLE[] = {
-	"0002.png","0004.png","0008.png","0016.png",
-	"0032.png","0064.png","0128.png","0256.png",
-	"0512.png","1024.png","2048.png",NULL
-};
 /*!
- * @brief draw a number to screen
- * @param iNum number to draw
- * @param x x pos
- * @param y y pos
- */
+* @brief draw a number to screen
+* @param iNum number to draw
+* @param x x pos
+* @param y y pos
+*/
+
 void drawNumber(int iNum,int x,int y) {
+	
 	char szBuf[STR_BUFFER_SIZE],*p;
 	if (iNum < 0)
-		return;
+	return;
 	sprintf(p = szBuf,"%d",iNum);
 	while (*p) {
-		blit((*p - '0') * NUM_CHAR_WIDTH,0,NUM_CHAR_WIDTH,NUM_CHAR_HEIGHT,imgNumTable,x,y);
+		vita2d_draw_texture_part(imgNumTable, x, y, (*p - '0') * NUM_CHAR_WIDTH, 0, NUM_CHAR_WIDTH,NUM_CHAR_HEIGHT);
+
 		x += NUM_CHAR_WIDTH;
 		p++;
 	}
+
+
 }
 /*!
- * @brief load all images
- */
+* @brief load all images
+*/
 void loadImages () {
-	int y;
-	for (y=0;NUMBER_IMAGE_TABLE[y] != NULL;++y) {
-		char szFilePath[STR_BUFFER_SIZE];
-		sprintf(szFilePath,"graphics/%s",NUMBER_IMAGE_TABLE[y]);
-		imgNum[y] = loadImage(szFilePath);
-	}
-	for (y=0;y < NEW_POINT_ANI_SIZE;++y) {
-		char szFilePath[STR_BUFFER_SIZE];
-		sprintf(szFilePath,"graphics/b%d.png",y);
-		imgNewPointAni[y] = loadImage(szFilePath);
-	}
-	imgBack = loadImage("graphics/bg.png");
-	imgNumTable = loadImage("graphics/numtable.png");
+	imgNum[0] = vita2d_load_PNG_buffer(&_binary_graphics_0002_png_start);
+	imgNum[1] = vita2d_load_PNG_buffer(&_binary_graphics_0004_png_start);
+	imgNum[2] = vita2d_load_PNG_buffer(&_binary_graphics_0008_png_start);
+	imgNum[3] = vita2d_load_PNG_buffer(&_binary_graphics_0016_png_start);
+	imgNum[4] = vita2d_load_PNG_buffer(&_binary_graphics_0032_png_start);
+	imgNum[5] = vita2d_load_PNG_buffer(&_binary_graphics_0064_png_start);
+	imgNum[6] = vita2d_load_PNG_buffer(&_binary_graphics_0128_png_start);
+	imgNum[7] = vita2d_load_PNG_buffer(&_binary_graphics_0256_png_start);
+	imgNum[8] = vita2d_load_PNG_buffer(&_binary_graphics_0512_png_start);
+	imgNum[9] = vita2d_load_PNG_buffer(&_binary_graphics_1024_png_start);
+	imgNum[10] = vita2d_load_PNG_buffer(&_binary_graphics_2048_png_start);
+
+	imgNewPointAni[0] = vita2d_load_PNG_buffer(&_binary_graphics_b0_png_start);
+	imgNewPointAni[1] = vita2d_load_PNG_buffer(&_binary_graphics_b1_png_start);
+	imgNewPointAni[2] = vita2d_load_PNG_buffer(&_binary_graphics_b2_png_start);
+	imgNewPointAni[3] = vita2d_load_PNG_buffer(&_binary_graphics_b3_png_start);
+
+	imgBack = vita2d_load_PNG_buffer(&_binary_graphics_bg_png_start);
+	imgNumTable = vita2d_load_PNG_buffer(&_binary_graphics_numtable_png_start);
 }
 /*!
- * @brief redraw screen content
- * @param ix ingore square x pos 
- * @param iy ingore square y pos
- */
+* @brief redraw screen content
+* @param ix ingore square x pos 
+* @param iy ingore square y pos
+*/
 void redrawScreen (int ix,int iy) {
+
 	int y,x;
-	
-	blit(0,0,imgBack->imageWidth,imgBack->imageHeight,imgBack,0,0);
+	vita2d_draw_texture(imgBack, 0, 0);
 	drawNumber(iScore,SCORE_DRAW_X_OFFSET,SCORE_DRAW_Y_OFFSET);
 	drawNumber(iHighScore,HISCORE_DRAW_X_OFFSET,HISCORE_DRAW_Y_OFFSET);
 	
@@ -125,10 +172,10 @@ void redrawScreen (int ix,int iy) {
 		for (x=0;x<TABLE_WIDTH;++x) {
 			int index = 0,t,rx,ry;
 			if (x==ix && y==iy)
-				continue;
+			continue;
 			t = table[y][x];
 			if (t == 0)
-				continue;
+			continue;
 			while (t > 0) {
 				t >>= 1;
 				index ++;
@@ -136,36 +183,43 @@ void redrawScreen (int ix,int iy) {
 			index--,index--;
 			rx = NUM_DRAW_X_POS(x); 
 			ry = NUM_DRAW_Y_POS(y);
-			blit(0,0,NUM_SQR_WIDTH,NUM_SQR_HEIGHT,imgNum[index],rx,ry);
+			vita2d_draw_texture(imgNum[index], rx, ry);
+
 		}
 	}
+
 	
 }
 /*!
- * @brief refresh screen 
- */
-void refreshScreen () {
-	clearScreen(WHITE);
-	redrawScreen(-1,-1);
-	flipScreen();
+* @brief refresh screen 
+*/
+void refreshScreen (int x, int y) {
+	vita2d_start_drawing();
+	vita2d_clear_screen();
+	redrawScreen(x,y);
+
+}
+void refreshScreen2() {
+	vita2d_end_drawing();
+	vita2d_swap_buffers();
 }
 /*!
- * @brief check table is full
- * @return 1 if table is full
- */
+* @brief check table is full
+* @return 1 if table is full
+*/
 int tableFull () {
 	int y,x,f = 0;
 	for (y=0;y<TABLE_HEIGHT;++y)
-		for (x=0;x<TABLE_WIDTH;++x)
-			if (table[y][x] == 0)
-				f++;
+	for (x=0;x<TABLE_WIDTH;++x)
+	if (table[y][x] == 0)
+	f++;
 	return f <= 0;
 }
 /*!
- * @biref play a animation new point
- * @param ox  x pos 
- * @param oy  y pos
- */
+* @biref play a animation new point
+* @param ox  x pos 
+* @param oy  y pos
+*/
 void playNewPoint(int ox,int oy) {
 	int y;
 	
@@ -173,21 +227,21 @@ void playNewPoint(int ox,int oy) {
 	int ry = NUM_DRAW_Y_POS(oy);
 	
 	for (y=0;y<NEW_POINT_ANI_SIZE;++y) {
-		clearScreen(WHITE);
-		redrawScreen(-1,-1);
-		blit(0,0,NUM_SQR_WIDTH,NUM_SQR_HEIGHT,imgNewPointAni[y],rx,ry);
-		flipScreen();
-		//sleep(1);
+
+		refreshScreen(-1,-1);
+		vita2d_draw_texture(imgNewPointAni[y], rx, ry);
+		refreshScreen2();
+		sceKernelDelayThread(10000);
 	}
 }
 /*!
- * @brief set a new numer '2' at random
- * @return 1 if table is full
- */
+* @brief set a new numer '2' at random
+* @return 1 if table is full
+*/
 int newPoint () {
 	int r;
 	if (tableFull())
-		return 1;
+	return 1;
 	r = (rand() % 100 < 10) ? 4 : 2;
 	while (1) {
 		int x,y;
@@ -202,26 +256,26 @@ int newPoint () {
 	return 0;
 }
 /*!
- * @biref add score
- */
+* @biref add score
+*/
 void addScore (int a) {
 	iScore += a;
 	if (iHighScore < iScore)
-		iHighScore = iScore;
+	iHighScore = iScore;
 }
 /*!
- * @biref play a animation of move square
- * @param ox original x
- * @param oy original y
- * @param dx dest x
- * @param dy dest y
- */
+* @biref play a animation of move square
+* @param ox original x
+* @param oy original y
+* @param dx dest x
+* @param dy dest y
+*/
 void playMove(int ox,int oy,int dx,int dy) {
 	int frames;
 	int y,rx,ry,stepX,stepY,t,index;
 	
-	if (ABS(ox-dy)>=3 || (oy-dy)>=3) 		frames = 15;
-	else if (ABS(ox-dy)>=2 || (oy-dy)>=2) 	frames = 10;
+	if (abs(ox-dy)>=3 || (oy-dy)>=3) 		frames = 15;
+	else if (abs(ox-dy)>=2 || (oy-dy)>=2) 	frames = 10;
 	else frames = 5;
 	
 	rx = NUM_DRAW_X_POS(ox);
@@ -232,32 +286,33 @@ void playMove(int ox,int oy,int dx,int dy) {
 	index = 0;
 	
 	if (t == 0)
-		return;
+	return;
 	while (t > 0) {
 		t >>= 1;
 		index ++;
 	}
 	index--,index--;
 	for (y=0;y<frames;++y,rx+=stepX,ry+=stepY) {
-		clearScreen(WHITE);
-		redrawScreen(ox,oy);
-		blit(0,0,NUM_SQR_WIDTH,NUM_SQR_HEIGHT,imgNum[index],rx,ry);
-		flipScreen();
+
+		refreshScreen(ox,oy);
+		
+		vita2d_draw_texture(imgNum[index], rx, ry);
+		refreshScreen2();
 	}
 }
 /*!
- * @brief move left
- */
+* @brief move left
+*/
 void moveLeft () {
 	int y,x,k;
 	for (y=0;y<TABLE_HEIGHT;++y) {
 		for (x=1;x<TABLE_WIDTH;++x) {
 			int done = 0;
 			if (table[y][x] == 0)
-				continue;
+			continue;
 			for (k=x-1;k>=0;--k) {
 				if (table[y][k] == 0)
-					continue;
+				continue;
 				if (table[y][k] == table[y][x]) {
 					playMove(x,y,k,y);
 					addScore(table[y][k] += table[y][x]);
@@ -282,18 +337,18 @@ void moveLeft () {
 	}
 }
 /*!
- * @brief move up
- */
+* @brief move up
+*/
 void moveUp () {
 	int y,x,k;
 	for (x=0;x<TABLE_WIDTH;++x) {
 		for (y=1;y<TABLE_HEIGHT;++y) {
 			int done = 0;
 			if (table[y][x] == 0)
-				continue;
+			continue;
 			for (k=y-1;k>=0;--k) {
 				if (table[k][x] == 0)
-					continue;
+				continue;
 				if (table[k][x] == table[y][x]) {
 					playMove(x,y,x,k);
 					addScore(table[k][x] += table[y][x]);
@@ -318,18 +373,18 @@ void moveUp () {
 	}
 }
 /*!
- * @brief move down
- */
+* @brief move down
+*/
 void moveDown () {
 	int y,x,k;
 	for (x=0;x<TABLE_WIDTH;++x) {
 		for (y=TABLE_HEIGHT-2;y>=0;--y) {
 			int done = 0;
 			if (table[y][x] == 0)
-				continue;
+			continue;
 			for (k=y+1;k<TABLE_HEIGHT;++k) {
 				if (table[k][x] == 0)
-					continue;
+				continue;
 				if (table[k][x] == table[y][x]) {
 					playMove(x,y,x,k);
 					addScore(table[k][x] += table[y][x]);
@@ -354,18 +409,18 @@ void moveDown () {
 	}
 }
 /*!
- * @brief move right
- */
+* @brief move right
+*/
 void moveRight () {
 	int y,x,k;
 	for (y=0;y<TABLE_HEIGHT;++y) {
 		for (x=TABLE_WIDTH-2;x>=0;--x) {
 			int done = 0;
 			if (table[y][x] == 0)
-				continue;
+			continue;
 			for (k=x+1;k<TABLE_WIDTH;++k) {
 				if (table[y][k] == 0)
-					continue;
+				continue;
 				if (table[y][k] == table[y][x]) {
 					playMove(x,y,k,y);
 					addScore(table[y][k] += table[y][x]);
@@ -390,61 +445,116 @@ void moveRight () {
 	}
 }
 /*!
- * @biref entry point of game
- */
+* @biref entry point of game
+*/
 int main() {
-	int refresh  = 1;
-	setupCallbacks();
-
-	sceCtrlSetSamplingCycle(0);
-	sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
-	initGraphics();
+	unsigned int refresh  = 1;
+	vita2d_init();
+	vita2d_set_clear_color(BLACK);
+	memset(&pad, 0, sizeof(pad));
 	loadImages();
-	
 	srand(time(NULL));
-	
 	iScore = 0;
 	iHighScore = 0;
-	
 	newPoint();
-	
-	while(running()) {
-		if (refresh) {
-			refresh = 0;
-			refreshScreen();
+	sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG_WIDE);
+	while(1) {
+		sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, 1);
+		sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1);
+		if (touch.reportNum > 0)
+		{
+			fxTouch = (lerp(touch.report[0].x, 1920, 960));
+			fyTouch = (lerp(touch.report[0].y, 1088, 544));
+
+			if(!touched) {
+				touched = 1;
+				touchX = fxTouch;
+				touchY = fyTouch;
+			}
+			
+		}  else {
+			if(touched){
+				
+				int touchDiffX = fxTouch-touchX;
+				int touchDiffY = fyTouch-touchY;
+				if(abs(touchDiffX) >TOUCH_DEADZONE||abs(touchDiffY)>TOUCH_DEADZONE){
+					if(abs(touchDiffX)>abs(touchDiffY)) {
+						if(touchDiffX<0) {
+							moveLeft();
+							newPoint();
+							refresh = 1;
+							touched = 0;
+						} else {
+							moveRight();
+							newPoint();
+							refresh = 1;
+							touched = 0;
+						}
+					} else {
+						if(touchDiffY>0) {
+							moveDown();
+							newPoint();
+							refresh = 1;
+							touched = 0;
+						} else {
+							moveUp();
+							newPoint();
+							refresh = 1;
+							touched = 0;
+						}
+					}
+					
+				}
+			}
 		}
-		updateInput();
-		if(keyTrigger(PSP_CTRL_UP)) {
+		if (refresh) {	
+			refreshScreen(-1,-1);
+			refreshScreen2();
+			refresh = 0;
+		}
+		sceCtrlPeekBufferPositive(0, &pad, 1);
+		if(pad.buttons & SCE_CTRL_UP) {
 			moveUp();
 			newPoint();
 			refresh = 1;
 		}
-		if(keyTrigger(PSP_CTRL_DOWN)) {
+		if(pad.buttons & SCE_CTRL_DOWN) {
 			moveDown();
 			newPoint();
 			refresh = 1;
 		}
-		if(keyTrigger(PSP_CTRL_LEFT)) {
+		if(pad.buttons & SCE_CTRL_LEFT) {
 			moveLeft();
 			newPoint();
 			refresh = 1;
 		}
-		if(keyTrigger(PSP_CTRL_RIGHT)) {
+		if(pad.buttons & SCE_CTRL_RIGHT) {
 			moveRight();
 			newPoint();
 			refresh = 1;
 		}
-		if (keyTrigger(PSP_CTRL_START)) {
+		if (pad.buttons & SCE_CTRL_START) {
 			break;
 		}
-		if (keyTrigger(PSP_CTRL_SELECT)) {
+		if (pad.buttons & SCE_CTRL_SELECT) {
 			iScore = 0;
 			memset(table,0,sizeof(table));
 			newPoint();
 			refresh = 1;
-		}
+			
+		}	
 	}
-	
-	sceKernelExitGame();
+	vita2d_fini();
+	int y = 0;
+	for (y=0;y<=10;++y) {
+		vita2d_free_texture(imgNum[y]);
+	}
+	for (y=0;y < NEW_POINT_ANI_SIZE;++y) {
+		vita2d_free_texture(imgNewPointAni[y]);
+	}
+	vita2d_free_texture(imgBack);
+	vita2d_free_texture(imgNumTable);
+
+	sceKernelExitProcess(0);
 	return 0;
 }
