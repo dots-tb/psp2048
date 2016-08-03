@@ -1,5 +1,5 @@
 TARGET:= 2048-PSP
-TITLE:= 2048000001
+TITLE:= 204800001
 
 OBJS = src/psp2048.o graphics/bg.o graphics/b0.o graphics/b1.o graphics/b2.o graphics/b3.o graphics/numtable.o \
 	graphics/0002.o graphics/0004.o graphics/0008.o graphics/0016.o \
