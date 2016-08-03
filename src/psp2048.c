@@ -14,15 +14,19 @@
 **  wololo for helping me find the Lord 
 **  m0skit0 for advance psp tk or whatever the site was
 **
-**  SMOKE, meetpatty, DrakonPL for code to study(or copy)
+**  SMOKE, meetpatty, DrakonPL, TheFloW for code to study(or copy)
 **  Rinnegatamante for makefiles to study 
 **  minilgos for his notes
 **
 */
 
+#include <psp2/kernel/modulemgr.h>
+#include <psp2/kernel/processmgr.h>
+#include <psp2/touch.h>
+#include <psp2/types.h>
 #include <psp2/ctrl.h>
 #include <psp2/touch.h>
-#include <psp2/kernel/processmgr.h>
+
 
 #include <stdio.h>
 #include <string.h>
@@ -31,6 +35,7 @@
 #include <time.h>
 #include <vita2d.h>
 #include <math.h>
+#include "file.h"
 
 #define VERS 1
 #define REVS 0
@@ -264,8 +269,10 @@ int newPoint () {
 void addScore (int a) {
 	fused = 1;
 	iScore += a;
-	if (iHighScore < iScore)
-	iHighScore = iScore;
+	if (iHighScore < iScore){
+		iHighScore = iScore;
+		saveScore(iHighScore);
+	}
 }
 /*!
 * @biref play a animation of move square
@@ -462,7 +469,7 @@ int main() {
 	loadImages();
 	srand(time(NULL));
 	iScore = 0;
-	iHighScore = 0;
+	iHighScore = loadScore();
 	newPoint();
 	sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG_WIDE);
 	while(1) {
@@ -548,6 +555,7 @@ int main() {
 			newPoint();
 			refresh = 1;
 		}
+
 		if (pad.buttons & SCE_CTRL_START) {
 			break;
 		}

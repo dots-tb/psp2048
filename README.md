@@ -18,5 +18,5 @@ clone & port by Anderain Ryu <anderain.develop@gmail.com>
   m0skit0 for advance psp tk or whatever the site was
   
   minilgos for his notes
-  SMOKE, meetpatty, DrakonPL for code to study(or copy)
+  SMOKE, meetpatty, DrakonPL, TheFloW for code to study(or copy)
   Rinnegatamante for makefiles to study 
