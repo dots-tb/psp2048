@@ -100,6 +100,7 @@ unsigned int touchX = 0;
 unsigned int touchY = 0;
 int fxTouch;
 int fyTouch;
+unsigned int fused = 0;
 
 int table[TABLE_HEIGHT][TABLE_WIDTH] = {
 	{0,0,0,0},
@@ -249,16 +250,19 @@ int newPoint () {
 		y = rand() % TABLE_HEIGHT;
 		if (table[y][x] == 0) {
 			table[y][x] = r;
+			
 			playNewPoint(x,y);
 			break;
 		}
 	}
+	fused = 0;
 	return 0;
 }
 /*!
 * @biref add score
 */
 void addScore (int a) {
+	fused = 1;
 	iScore += a;
 	if (iHighScore < iScore)
 	iHighScore = iScore;
@@ -292,6 +296,8 @@ void playMove(int ox,int oy,int dx,int dy) {
 		index ++;
 	}
 	index--,index--;
+	if(frames>0)
+	fused = 1;
 	for (y=0;y<frames;++y,rx+=stepX,ry+=stepY) {
 
 		refreshScreen(ox,oy);
@@ -299,6 +305,7 @@ void playMove(int ox,int oy,int dx,int dy) {
 		vita2d_draw_texture(imgNum[index], rx, ry);
 		refreshScreen2();
 	}
+	
 }
 /*!
 * @brief move left
@@ -481,11 +488,13 @@ int main() {
 					if(abs(touchDiffX)>abs(touchDiffY)) {
 						if(touchDiffX<0) {
 							moveLeft();
+							if(fused)
 							newPoint();
 							refresh = 1;
 							touched = 0;
 						} else {
 							moveRight();
+							if(fused)
 							newPoint();
 							refresh = 1;
 							touched = 0;
@@ -493,11 +502,13 @@ int main() {
 					} else {
 						if(touchDiffY>0) {
 							moveDown();
+							if(fused)
 							newPoint();
 							refresh = 1;
 							touched = 0;
 						} else {
 							moveUp();
+							if(fused)
 							newPoint();
 							refresh = 1;
 							touched = 0;
@@ -515,21 +526,25 @@ int main() {
 		sceCtrlPeekBufferPositive(0, &pad, 1);
 		if(pad.buttons & SCE_CTRL_UP) {
 			moveUp();
+			if(fused)
 			newPoint();
 			refresh = 1;
 		}
 		if(pad.buttons & SCE_CTRL_DOWN) {
 			moveDown();
+			if(fused)
 			newPoint();
 			refresh = 1;
 		}
 		if(pad.buttons & SCE_CTRL_LEFT) {
 			moveLeft();
+			if(fused)
 			newPoint();
 			refresh = 1;
 		}
 		if(pad.buttons & SCE_CTRL_RIGHT) {
 			moveRight();
+			if(fused)
 			newPoint();
 			refresh = 1;
 		}
